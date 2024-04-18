@@ -1,0 +1,31 @@
+wandb_config:
+    project: 'RL_transformer_uniform'
+    resume_run: False
+    
+run_config:
+    n_gpus: 1
+
+    n_arms : 2
+    n_embd : 96
+    n_layer : 6
+    n_head : 3
+    use_cache : False
+    horizon : 100
+    gamma : 0.9
+    
+    lam_symmetry : 0.03
+    start_entropy_coeff : 0.2
+    
+    
+    train_steps : 1000
+    warmup_steps : 200
+    LR : 0.001
+    
+    mini_b_size : 5000
+    N_mini_batches : 4
+
+    
+    mus_regime : 'uniform'
+    print_memory_usage : False
+    run_experiment_every : 50
+    save_every_iter : 10
