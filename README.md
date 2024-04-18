@@ -2,10 +2,10 @@
 In-context Reinforcement Learning with GPT transformer
 
 Experiments:
-- run_config.yaml : can specify parameters for a new run (model dimensions, whether to regularize / symmetrize, training settings such as batch size, number of training steps, learning rate and etc)
-results will be saved locally (model and losses) and also recorde in wandb as training progresses
+- run_config.yaml : can specify parameters for a new run (model dimensions, whether to regularize/symmetrize, training settings such as batch size, number of training steps, learning rate and etc);
+results will be saved locally (model and losses) and also recorded in wandb as training moves
 
-- runscript.sh : submits the job to the SLURM queue
+- runscript.sh : submits the job to the SLURM queue (via command line just using batch)
 
 Files:
 
