@@ -11,7 +11,7 @@ Files:
 
 - main.py : model training
 - ddp_main.py : wrapper to run distributed data parallel training
-- train_utils.py : loss calculation, training schedulling, and empirical evaluation (via experiment function)
+- training_utils.py : loss calculation, training schedulling, and empirical evaluation (via experiment function)
 - transformer.py : implementation of symmetrized and regularized transformers
 - env_MAB.py: implementation of bandit class
 - my_algorithms.py: baseline algorithm (Thompson sampling) and the optimal policy (Gittins index)

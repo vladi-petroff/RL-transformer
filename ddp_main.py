@@ -45,7 +45,7 @@ from env_MAB import *
 from my_algorithms import * 
 from util import *
 from transformer import *
-from train_utils import *
+from training_utils import *
 
 
 
@@ -167,8 +167,8 @@ class Trainer:
         # self.optimizer = torch.optim.SGD(self.model.parameters(), lr = args['LR'] / args['N_mini_batches'], momentum = 0.9)
         
         self.val_coeff_list = [0.1] * args['train_steps']
-        self.entropy_coeff_list = dynamic_coeff(start = 0.1, finish = 0.0, total_len = args['train_steps'], progress_pct = 0.6)
-        self.lambda_list = dynamic_coeff(start = 0.7, finish = 1.0, total_len = args['train_steps'], progress_pct = 0.6)
+        self.entropy_coeff_list = warmup_coeff(start = 0.1, finish = 0.0, total_len = args['train_steps'], progress_pct = 0.6)
+        self.lambda_list = warmup_coeff(start = 0.7, finish = 1.0, total_len = args['train_steps'], progress_pct = 0.6)
         
     
     

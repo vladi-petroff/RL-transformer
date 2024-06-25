@@ -2,8 +2,6 @@ import numpy as np
 import random
 import pandas as pd
 import matplotlib.pyplot as plt
-
-
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -12,7 +10,23 @@ from torch.distributions.categorical import Categorical
 from env_MAB import *
 
 
-def dynamic_coeff(start, finish, total_len, progress_pct = 1.0, from_head = True):
+### Learning Rate Scheduling
+def warmup_coeff(start : float, finish : float, total_len : int, progress_pct :float = 1.0, from_head = True):
+    """
+    creates a warm-up scheduling: coefficients changes from value = start to value = finish over the course of 
+    progress_pct * total_len steps, and then becomes constant. 
+
+    Args:
+        start (float): start value of the coefficient
+        finish (float): final value of the coefficient
+        total_len (int): output list length
+        progress_pct (float): how much of the list share will be spent on gradual changes vs. being constant
+        from_head (bool): whether to keep initial coefficients constant or final coefficients constant (defaults to final)
+
+    Returns:
+        list of floats: multipliers for our original learning rate
+    """
+
     progress_len = int(progress_pct * total_len)
     
     answer = []
@@ -28,36 +42,18 @@ def dynamic_coeff(start, finish, total_len, progress_pct = 1.0, from_head = True
     return answer
 
 
+def create_simple_scheduler(optimizer, warmup_steps):
+    """
+    creates a simple warm-up scheduler: increase from 1e-2 to 1 over the course of warmup_steps, 
+    and always return 1 afterwardse (this is our lambda multiplier depending on epoch)
 
-# def create_cosine_scheduler(optimizer, train_steps, warmup_steps):
-    
-#     warmup = np.interp(np.arange(1 + warmup_steps), [0, warmup_steps], [1e-2, 1])
-#     normal_steps = train_steps - warmup_steps
-#     xx = np.arange(normal_steps) / normal_steps
-#     cosine = (np.cos(np.pi * xx) + 1) / 2
-#     lr_schedule = np.concatenate([warmup, cosine])
-#     lr_lambda = lambda epoch: lr_schedule[epoch]
-#     scheduler = torch.optim.lr_scheduler.LambdaLR(optimizer, lr_lambda)
-    
-#     return scheduler
-
-
-
-def create_cosine_scheduler_upd(optimizer, train_steps, warmup_steps):
-    
-    warmup = np.interp(np.arange(1 + warmup_steps), [0, warmup_steps], [1e-2, 1])
-    normal_steps = train_steps - warmup_steps
-    xx = np.arange(normal_steps) / normal_steps
-    cosine = (np.cos(np.pi * xx) + 1) / 2
-    lr_schedule = np.concatenate([warmup, cosine])
-    lr_lambda = lambda epoch: 1 if epoch >= len(lr_schedule) else lr_schedule[epoch]
-    scheduler = torch.optim.lr_scheduler.LambdaLR(optimizer, lr_lambda)
-    
-    return scheduler
-
-
-def create_simple_scheduler(optimizer, train_steps, warmup_steps):
-    
+    Args:
+        optimizer (optimizer): torch.optim class instance (we wrap LambdaLR over it)
+        warmup_steps (int): for how many steps perform warmup
+    Returns:
+        torch.optim.lr_scheduler.LambdaLR class instance
+    """
+        
     warmup = np.interp(np.arange(1 + warmup_steps), [0, warmup_steps], [1e-2, 1])
     lr_lambda = lambda epoch: 1 if epoch >= len(warmup) else warmup[epoch]
     scheduler = torch.optim.lr_scheduler.LambdaLR(optimizer, lr_lambda)
@@ -72,11 +68,12 @@ def create_const_scheduler(optimizer, multiplier):
 
 
 
-
+### Loss computation  
 class BanditLossComputer():
     '''
-    our final loss function is an intricate combination of several components, 
-    so it's easier to incapsulate all of them in one single class
+    Our final loss function is an complicated combination of several components, 
+    so it's easier to incapsulate all of them in one single Loss class
+    We later can access individual loss components simply by calling BanditLossComputer.policy_loss_GAE() and etc. in the training loop  
     '''
     
     def __init__(self, args : dict):
@@ -85,21 +82,31 @@ class BanditLossComputer():
         
     
     def future_rewards(self, rewards):
-        answer = torch.clone(rewards)
+        '''
+        returns the future rewards, a well-known optimization in the REINFORCE method:
+        future_rewards[i] = rewards[i] + rewards[i + 1] + ...
+        '''
+        future_rew = torch.clone(rewards)
         for t in range(rewards.shape[1] - 2, -1, -1):
-            answer[:, t] += answer[:, t + 1]
+            future_rew[:, t] += future_rew[:, t + 1]
 
-        return answer
+        return future_rew
     
 
 
     def policy_loss_GAE(self, chosen_actions_logs, rewards, values, lambdaa): 
         '''
         REINFORCE policy loss with Generalized Advantage Estimation
-        chosen_actions_logs : log probabilities of actions chosen in these rollouts
-        rewards : observed rewards
-        values : value network baselines estimates
-        lambdaa : controls the bias-variance trade-off
+
+        Parameters:
+            chosen_actions_logs (torch.Tensor) : log probabilities of actions chosen in these rollouts
+            rewards (torch.Tensor) : observed rewards
+            values (torch.Tensor) : value network baselines estimates
+            lambdaa (float) : controls the bias-variance trade-off in the Generalized Advantage definition 
+            (lambdaa = 1 means unbiased gradient but higher variance, and lambdaa = 0 means very greedy biased gradient estimates)
+
+        Returns:
+            single float loss (torch.Tensor)
         '''
 
         assert rewards.shape[1] == values.shape[1]
@@ -124,10 +131,24 @@ class BanditLossComputer():
 
 
 
-    def entropy_loss(self, policy_output):
+    def entropy_loss(self, policy_output) -> float:
+        '''
+        entropy regulization loss
+
+        Parameters:
+            policy_output: torch.Tensor
+                log probabilities (for taking all possible actions) across the full episode
+
+        Returns:
+            torch.Tensor with single float loss value
+
+        '''
         entropies = torch.sum(F.softmax(policy_output, dim = 2) * F.log_softmax(policy_output, dim = 2), axis = 2)
 
         mini_batch_sz = policy_output.shape[0]
+        # we use normalizer because our problem discounts rewards in the larter horizons, which affects policy loss accordingly, 
+        # and hence we want entropy loss to act likewise (otherwise this loss will dominate later horizons)
+
         normalizer = self.gamma * torch.vander(torch.tensor([self.gamma] * mini_batch_sz), 
                                   N = self.horizon, increasing = True).to( entropies.get_device() )
         discounted_entropies = (entropies * normalizer).float()
@@ -137,7 +158,13 @@ class BanditLossComputer():
 
     
     def value_loss(self, value_output, disc_rewards):
+        '''
+        computes the values loss as MSE between value_outputs and observed rewards
+        "ideal" loss output would be V_t = E(r_t + gamma * r_{t + 1} + ... )
 
+        Note: we want the value to predict well on every horizon, but the final loss will be discounted
+        in a way simiilar to the policy and entropy losses
+        '''
         disc_future_rew = self.future_rewards(disc_rewards).float()
         
         mini_batch_sz, _ = disc_future_rew.shape
@@ -153,9 +180,11 @@ class BanditLossComputer():
     
     
     
+    # this loss was used in some experiments to observe whether it goes down with training, especially as we start to approach
+    # not actually used for backpropagation
     def invariance_loss(self, policy_output, act_hist, rew_hist):
         '''
-        Gittins idex (optimal strategy) should be permutation-invariant, 
+        Gittins index (optimal strategy) should be permutation-invariant, 
         i.e., optimal actions should not change if we just shuffle history before the current moment
 
         this function can be used to calculate invariance loss (which will be zero in case the policy is indeed permutation invariant)
@@ -205,14 +234,15 @@ class BanditLossComputer():
     
     
     
+### Other  
 
 def run_experiment(model, horizon, gamma, b_size, dim_size = 1,
                         model_decision = 'sample'):
     
     '''
-    runs experiment during the training: calculate the mean regret (minus reward) for trivial bandits, where one of the arms has mean = 1, and all others = 0
+    runs experiment during the training: calculate the mean regret (minus reward) for "trivial" bandits, where one of the arms has mean = 1, and all others = 0
 
-    this way we can track (emperically) the behaviour of the model at each epoch of training and see how it evolves
+    this way we can emperically track whether the model favors some arms over others and reveal any asymmetric behaviour
     '''
 
     n_arms = model.n_arms
@@ -266,3 +296,18 @@ def run_experiment(model, horizon, gamma, b_size, dim_size = 1,
         print(f"mus = {mu_pair}, avg regret = {torch.mean(torch.sum(model_regrets, axis = 1)).item()}")
         
     print('\n')
+
+
+## old utils 
+
+def create_cosine_scheduler_upd(optimizer, train_steps, warmup_steps):
+    
+    warmup = np.interp(np.arange(1 + warmup_steps), [0, warmup_steps], [1e-2, 1])
+    normal_steps = train_steps - warmup_steps
+    xx = np.arange(normal_steps) / normal_steps
+    cosine = (np.cos(np.pi * xx) + 1) / 2
+    lr_schedule = np.concatenate([warmup, cosine])
+    lr_lambda = lambda epoch: 1 if epoch >= len(lr_schedule) else lr_schedule[epoch]
+    scheduler = torch.optim.lr_scheduler.LambdaLR(optimizer, lr_lambda)
+    
+    return scheduler

@@ -31,7 +31,7 @@ from env_MAB import *
 from my_algorithms import * 
 from util import *
 from transformer import *
-from train_utils import *
+from training_utils import *
 
 
 torch.autograd.set_detect_anomaly(True)
@@ -170,7 +170,7 @@ def train_step(model, args, loss_computer, print_memory = False):
     1) get trajectory rollouts as specified in get_rollouts() function
     2) compute and return different loss components using loss_computer class. 
     These include regular REINFORCE policy loss, value loss, entropy regularization; 
-    I incapsulated all loss computations in the class BanditLossComputer for convenience, which can be found in train_utils file
+    I incapsulated all loss computations in the class BanditLossComputer for convenience, which can be found in training_utils file
 
     symmetry regularization (variance) is implemented separately inside the get_rollouts() function
     '''
@@ -222,7 +222,7 @@ def train_step(model, args, loss_computer, print_memory = False):
 def train(model, args):    
     
     optimizer = torch.optim.Adam(model.parameters(), lr = args['LR'] / args['N_mini_batches'] )
-    scheduler = create_simple_scheduler(optimizer, args['train_steps'], args['warmup_steps'])
+    scheduler = create_simple_scheduler(optimizer=optimizer, warmup_steps=args['warmup_steps'])
 
     loss_computer = BanditLossComputer(args)
     policy_regrets = []
@@ -266,9 +266,9 @@ def train(model, args):
         start_entropy_coeff = 0.5 if not('start_entropy_coeff' in args.keys()) else args['start_entropy_coeff']
         finish_entropy_coeff = 0.0 if not('finish_entropy_coeff' in args.keys()) else args['finish_entropy_coeff']
         
-        entropy_coeff_list = dynamic_coeff(start = start_entropy_coeff, finish = finish_entropy_coeff, 
+        entropy_coeff_list = warmup_coeff(start = start_entropy_coeff, finish = finish_entropy_coeff, 
                                            total_len = args['train_steps'], progress_pct = 0.5)
-        lambda_list = dynamic_coeff(start = 0.3, finish = 1.0, total_len = args['train_steps'], progress_pct = 0.5)
+        lambda_list = warmup_coeff(start = 0.3, finish = 1.0, total_len = args['train_steps'], progress_pct = 0.5)
         
         if 'lam_symmetry' in args.keys():
             lam_symmetry_list = [ args['lam_symmetry'] ] * args['train_steps']

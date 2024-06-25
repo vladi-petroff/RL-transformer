@@ -2,12 +2,8 @@ import numpy as np
 import random
 import pandas as pd
 import matplotlib.pyplot as plt
-
 from functools import lru_cache
 from env_MAB import *
-
-
-
 
 
 def random_argmax(a):
@@ -15,7 +11,9 @@ def random_argmax(a):
 
 
 def sample_mus(b_size, n_arms, regime = 'uniform', offset = 0.0):
-
+    '''
+    different distributions of mus are used dependin on the training regime
+    '''
     if regime == 'uniform':
         return np.random.rand(b_size, n_arms).astype(float)
 
@@ -47,6 +45,10 @@ def sample_mus(b_size, n_arms, regime = 'uniform', offset = 0.0):
     assert False, f"incorrect regime = {regime}"
 
 
+#############
+# Thompson Sampling -> used as 'baseline'
+# Gittins Index (both with Uniform and Beta preiors -> optimal solution
+#############
 
 class Thompson_sampling():
     def __init__(self, MAB):
@@ -77,12 +79,6 @@ def estimate_thompson_probs(bandit):
         total_sum += random_argmax(np.array(beta_draws))
 
     return total_sum / trials
-
-
-
-
-#############
-
 
 
 
