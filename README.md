@@ -1,6 +1,7 @@
 # RL-transformer
 In-context Reinforcement Learning with GPT transformer
-The PDF file contains the original submission to Harvard's Statistics & CS departments for the senior thesis, which received the highest honors reward.
+
+> The PDF file contains the original submission to Harvard's Statistics & CS departments for the senior thesis, which received the highest honors reward.
 
 Experiments:
 - run_config.yaml : can specify parameters for a new run (model dimensions, whether to regularize/symmetrize, training settings such as batch size, number of training steps, learning rate and etc);
